@@ -201,3 +201,46 @@ adb shell logcat -b crash -d -t 200 > crash-after-private.txt
 电话、短信等测试会影响通信或费用，后续执行 agent 应在用户明确指定测试方式/号码后实施；不自动拨号、发消息或拨紧急号码做测试。两台设备均未做这类外发测试。
 
 各机型的未完成验证与已观察结果见 [实机记录](devices.md)。
+
+<a id="next-stage-todo"></a>
+
+## 下一阶段候选 TODO
+
+2026-11-17 补充。以下仅记录可能的后续方向，均未在本项目两台设备上实施或完成兼容性验证，也不是批量操作清单。已完成的包处理仍以[实机记录](devices.md)为准，不重复执行。优先级是研究与验证顺序，不代表已决定安装某工具、取得 Root 或更换系统。
+
+### P0：选择可持续、兼容现有代理的联网控制
+
+- [ ] **评估 App Manager 4.1.1 的 ADB/eBPF 联网限制。** 官方发布说明支持 ADB 或 Root 模式，底层使用 UID 防火墙规则，不占用 `VpnService`；不能写成普通 `pm revoke INTERNET` 即可实现。先选确认使用独立 UID 的非核心候选，检查本机接口权限、实际拒绝效果和恢复结果。共用 system/phone/log UID 的包不直接整组封网。[发布说明](https://github.com/MuntashirAkon/AppManager/releases/tag/v4.1.1)、[对应版本接口源码](https://github.com/MuntashirAkon/AppManager/blob/v4.1.1/app/src/main/java/io/github/muntashirakon/AppManager/compat/ConnectivityManagerCompat.java)
+- [ ] **比较 VPN 防火墙与现有 Hiddify 路径。** 候选为 Rethink、NetGuard；同一用户或资料夹只能有一个活动 `VpnService`。Rethink 支持 SOCKS5、HTTP CONNECT、WireGuard 转发，但不据此假定当前 Hiddify 提供可用的本地代理入口。需要核对协议、DNS、UDP、IPv6 与分流，选定一条完整路径后再配置。已有 Root 时另评估 AFWall+，不为试用防火墙直接进入解锁/Root 流程。[Rethink](https://github.com/celzero/rethink-app)、[NetGuard](https://github.com/M66B/NetGuard)、[Android VPN 约束](https://developer.android.com/develop/connectivity/vpn)、[AFWall+](https://github.com/ukanth/afwall/blob/beta/README.md)
+- [ ] **验证持续性与最小回退。** App Manager 官方明确说明 eBPF 规则重启后丢失，恢复 ADB 连接前可能有联网空窗。覆盖 WLAN、移动数据、IPv6、代理开关、重启、规则管理器退出及 OTA 后的情况；记录规则是否重建、窗口期和具体恢复方式，不能以界面开关状态代替流量结果。
+
+交付物：两台设备分别给出“可用／不可用／仍待验证”的网络方案、目标 UID 与共享包、覆盖范围、开机空窗、功能代价及撤销方法。联网限制不代表本地采集已停止，也不覆盖短信型自注册。
+
+### P0：用少量连接观察支持操作选择
+
+- [ ] **评估 PCAPdroid 等现有工具的观察路径。** 如需观察，先记录原网络、代理和组件状态；无 Root 模式会占用 VPN，Root 抓取另有路径，不能混为同一测试条件。不要求解密全部 HTTPS，也不以证明恶意或上传内容作为处理前提。[官方使用说明](https://emanuele-f.github.io/PCAPdroid/quick_start.html)、[Root 抓取等高级功能](https://emanuele-f.github.io/PCAPdroid/advanced_features.html)
+- [ ] **把“端口切除”拆成具体目标。** 区分本地监听服务、某 UID 的出站连接、目的域名/IP 和内部采集入口；没有实际监听记录时不编造专用端口。根据观察选择较小的规则，避免以共享 HTTPS 端口代替目标识别。DNS 过滤需要核对硬编码 IP、独立 DNS 和移动网络等覆盖缺口。
+
+交付物：只保留影响处理决策的连接摘要及前后对照；原始抓取和个人数据不进入公开仓库。
+
+### P1：保留必要功能，缩小数据访问和内部入口
+
+- [ ] **评估 AppOps、权限和子组件控制。** 对不能整包停用的候选，逐项确认访问是否受相应权限或 AppOp 控制，保存原模式并验证实际变化。ADB 不具备任意修改所有应用子组件的能力；App Manager 文档仅列出 test-only 应用等有限例外。普通设置、ADB、Root/IFW 分开记录，内部 SDK 或普通 Java 方法不当作可直接禁用的 manifest 组件。[App Manager 手册](https://muntashir.dev/AppManager/en/)
+- [ ] **需要更细控制时，再研究匹配版本的 Hook。** 只针对明确的采集、落库或发送入口，记录命中日志、失效检测和回退。RegBlocker 可作为方法参考：公开验证针对特定 vivo 固件，不是 realme/Moto 的可直接安装方案；OTA 后需重新判断适配。[具体作用域和验证记录](https://github.com/Xposed-Modules-Repo/io.github.greatday2233.vivodmguard/blob/main/README.md)
+
+交付物：每个候选的实际权限前提、可关闭的入口、保留的功能、失败行为和恢复结果；不把持有权限、存在 SDK 或服务运行等同于实际上传。
+
+### P1：按用户入口评估开源替换
+
+- [ ] **优先调查输入法等独立应用。** 中文输入法候选包括同文/Trime；HeliBoard 是不申请联网权限的另一例，但不能假定它满足中文输入需求。先核对输入体验、密码框/安全键盘、默认角色和原厂后台依赖，再决定如何处理原包。[Trime](https://github.com/osfans/trime)、[HeliBoard](https://github.com/HeliBorg/HeliBoard)
+- [ ] **单独评估 InstallerX Revived。** 区分接管 APK 打开界面、以 Shizuku/Root 身份提交安装，以及替换系统安装器；前两者不证明 OEM 框架或 Provider 检查已被移除。先研究兼容性和原厂安装链的退路，不直接套用其他机型的系统替换模块。[官方中文说明](https://github.com/wxxsfxyzm/InstallerX-Revived/blob/main/docs/README_CN.md)
+- [ ] **通讯录、拨号器等按角色与依赖分别判断。** 验收默认角色、来电界面、双卡、权限及原厂回退；紧急呼叫按 Android 设计仍依赖预装拨号器，不用实际拨紧急号码做测试，也不因换默认 App 就删除通话基础组件。[Android InCallService 文档](https://developer.android.com/reference/android/telecom/InCallService)
+
+交付物：按“替代应用／原包／底层依赖／功能损失／恢复方法”整理的小清单。没有合适替代品或替代收益不明确的项目可以保留，不以全套开源替换为完成条件。
+
+### P2：普通 App 隔离与系统级路线
+
+- [ ] **评估 Shelter／工作资料夹或独立用户。** 用于分开普通商业 App 的数据和运行环境；核对 OEM 实现、跨资料共享、通知与 VPN 覆盖。它们共用同一套系统，不作为隔离厂商特权服务的保证。新增用户空间后仍需复查预装组件状态。[Shelter 及其 OEM 实现限制](https://github.com/PeterCxy/Shelter/blob/master/README.md)
+- [ ] **仅在具体需求推动时评估 Root 或替代 ROM。** 核对具体型号、代号、解锁、维护和回退条件；Moto XT2533-4 / portov 不按旧款同名 g100 的适配情况判断。GrapheneOS 的框架级网络权限可作为设计参考，但当前官方支持名单不含这两台设备，不是可直接刷入的方案。[网络权限设计](https://grapheneos.org/features#network-permission-toggle)、[官方设备支持](https://grapheneos.org/faq#supported-devices)
+
+交付物：是否值得进入该路线的结论及依据；无可维护适配时不继续实施。所有候选先完成小范围验证，再决定是否提升为本指南的正式操作步骤。
