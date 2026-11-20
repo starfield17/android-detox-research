@@ -1,6 +1,6 @@
 # 两台实机：记录、复查与恢复
 
-本文分别标明用户提供的历史 session 记录和 2026-11-17 的普通 ADB 检查结果。包版本、路径和状态只适用于所列构建；组件名、权限或服务绑定本身不能证明上传了什么。本轮没有 Root、抓包、反编译或新增卸载；新增操作只有 Neo7 DCS 和 Moto Xlog 的用户级停用。操作方法和验收原则见[指南](guide.md)，跨设备组件见[组件](components.md)，来源见[来源](sources.md)，项目概览见[首页](../README.md)。
+本文分别标明历史 session 记录和 2026-11-17 的普通 ADB 检查结果。本轮新增操作为 Neo7 DCS 和 Moto Xlog 的用户级停用。操作方法和验收原则见[指南](guide.md)，跨设备组件见[组件](components.md)，来源见[来源](sources.md)，项目概览见[首页](../README.md)。
 
 ## realme Neo7
 
@@ -12,36 +12,60 @@
 | `com.coloros.regservice` | 16.0.20，`/product/app/RegService`；曾运行 DMService，User 0 卸载返回 Success | 17.0.15，同一路径；User 0 和 999 均未安装，User 0 已停止，未见进程；仅看包列表会漏掉该包 |
 | `com.oplus.statistics.rom`（DCS） | 5.9.11.01，旧记录中运行 | 5.9.14.00，`/product/priv-app/DCS`；本轮对 User 0 停用，enabled 从 0 变为 3 |
 
-系统镜像中的新版 APK 与用户卸载状态可以同时存在。本次版本变化后两个旧卸载状态仍保留，不保证未来 OTA 也如此。旧记录中的 SystemHelper 后台白名单条目单独不足以证明卸载后仍在运行。
+系统镜像中的新版 APK 与用户卸载状态可以同时存在，本次大版本升级后两个旧卸载状态均得以保留。旧记录中的 SystemHelper 后台白名单条目仅系配置残留。
 
-本轮 DCS 返回 `disabled-user`，仍为 installed=true，`stopped=false`，但未见该包进程和服务。设置搜索 `battery` 返回多项结果，电池设置页可以打开；这只覆盖一个搜索词和一个入口。Neo7 本轮未重启，未验证 OTA、长期使用、全部设置页或网络上传，也未证明其他组件的统计随之消失。
+本轮 DCS 返回 `disabled-user`，仍为 installed=true，`stopped=false`，未见该包进程和服务。设置搜索 `battery` 返回多项结果，电池设置页可以正常打开。
 
 ### 后续候选与依赖
 
-以下是本轮包和服务发现，除 DCS 外均未新增停用；应逐项评估，不能作为批量操作清单。
+以下为本轮检出的包与服务线索（除 DCS 外均未停用）：
 
-| 包与当前版本 | 路径、线索及边界 |
-|---|---|
-| `com.oppo.ctautoregist` 17.0.5 | `/product/priv-app/CTAutoRegist`；通信相关候选，需专项回归。 |
-| `com.oplus.onetrace` 1.3.49 | `/system_ext/app/OTrace`；OTraceDaemonService 的启动来源为 OBrain，共享 system UID。 |
-| `com.oplus.olc` 17.0.6 | OlcService，MCS 拉起 OlcPushMessageService；不能据此断言上传内容。 |
-| `com.oplus.postmanservice` 16.0.2 | `/system_ext/app/PostmanService`；检查前 stopped=true。 |
-| `com.oplus.logtrial` 17.13.12 | `/system_ext/app/LogTrialCommercial`；检查前 stopped=true，未证明是旧 LogKit 改名。 |
-| `com.oplus.qualityprotect` 17.0.20 | `/system_ext/app/OplusQualityProtect`；QualityProtectService，共享 system UID，并有 OBrain 调用线索。 |
-| `com.oplus.powermonitor` 17.0.010 | 包含电池及电源统计服务，PowerStatsService 被 ExSystemService 绑定；处理可能影响诊断和管理。 |
-| `com.oplus.audiomonitor` 17.0.2 | `/product/app/OplusAudioMonitor`；仅为发现项，未证实录音或上传。 |
-| `com.heytap.openid` 5.1.6 | 标识服务线索，需考虑账号和云服务回归。 |
-| `com.oplus.obrain` 17.0.21 | 含 OStatsDaemonService、OCenterDaemonService、MIDASService，与多媒体及原生 Midas 客户端有连接。 |
-| `com.oplus.metis` 17.32.453、`com.oplus.deepthinker` 17.0.0、`com.oplus.gleanerservice` 17.8.0、`com.oplus.stdsp` 5.0.12_20c0875_260529 | 场景、采集、无障碍或安全服务线索；未做本机停用回归。 |
-| `com.oplus.trafficmonitor` 17.3.5、`com.oplus.lfeh` 17.0.7 | 流量与诊断候选，需区分用户可见统计与后台上报。 |
-| `com.coloros.activation` 17.1.4、`com.coloros.bootreg` 17.0.235 | 激活和引导链的独立包，应考虑初始化和账号功能。 |
-| `com.coloros.remoteguardservice` 17.2.2、`com.coloros.familyguard` 17.3.1 | 均安装启用；涉及守护功能。 |
+| 包与当前版本 | UID / 联网权限 | 路径、常驻服务、定时任务与处理边界 |
+|---|---|---|
+| `com.oppo.ctautoregist` 17.0.5 | `10091` / 有 `INTERNET` | `/product/priv-app/CTAutoRegist`；注册 `RegisterReceiver` 闹钟；电信自注册组件，需插电信卡专项回归。 |
+| `com.oplus.onetrace` 1.3.49 | `1000` (`system`) / 共享 | `/system_ext/app/OTrace`；运行 `OTraceDaemonService`（由 OBrain 拉起）与 `StatsManagerService`。 |
+| `com.oplus.olc` 17.0.6 | `1000` (`system`) / 共享 | `/system_ext/app/Olc`；运行 `OlcService`，MCS 拉起 `OlcPushMessageService`；JobScheduler 注册 `.dcs.service.UploadJobService`，含 `DcsContentProvider` 与 `TaskInfoProvider`。 |
+| `com.oplus.postmanservice` 16.0.2 | `1000` (`system`) / 共享 | `/system_ext/app/PostmanService`；检查前 `stopped=true`，含远程诊断与日志抓取组件。 |
+| `com.oplus.logtrial` 17.13.12 | `10460` / 有 `INTERNET` | `/system_ext/app/LogTrialCommercial`；检查前 `stopped=true`，持 `QUERY_ALL_PACKAGES` 与 `PACKAGE_USAGE_STATS`。 |
+| `com.oplus.qualityprotect` 17.0.20 | `1000` (`system`) / 共享 | `/system_ext/app/OplusQualityProtect`；运行 `QualityProtectService`，与 OBrain 存在调用关联。 |
+| `com.oplus.powermonitor` 17.0.010 | `1000` (`system`) / 共享 | `/system_ext/app/PowerMonitor`；运行 `FeedBackBatteryStatsService`、`OidtService`、`ChargeStatusService`、`PowerStatsService`（被 ExSystemService 绑定）。 |
+| `com.oplus.audiomonitor` 17.0.2 | `10176` / **无 `INTERNET`** | `/product/app/OplusAudioMonitor`；仅持 `com.oplus.permission.safe.SETTINGS`。 |
+| `com.heytap.openid` 5.1.6 | `10116` (`osec.kms`) / 有 `INTERNET` | `/product/priv-app/OpenID`；该共享 UID 下仅此一包；运行 `IdentifyService` 与 `KmsDaemonService`（User 0 与 999 均绑定）。 |
+| `com.oplus.obrain` 17.0.21 | `1000` (`system`) / 共享 | `/my_stock/non_overlay/app/OBrain`；运行 `OStatsDaemonService`、`OCenterDaemonService`、`MIDASService`，JobScheduler 注册 `ConfigPullJobService`，与多媒体及原生 Midas 客户端连接。 |
+| `com.oplus.metis` 17.32.453 | `10114` / 有 `INTERNET` | 更新层位于 `/data/app`，原厂 `/product/priv-app/Metis`；运行 `ContextAwareService`、`PushDataService`，JobScheduler 注册 `DcsUploadJobService` 与 `PERSONA_DAILY_ALARM`，暴露 `BehaviorCallProvider`、`UserDataCollectionProvider`。 |
+| `com.oplus.deepthinker` 17.0.0 | `10208` / 有 `INTERNET` | `/system_ext/priv-app/DeepThinker`；运行 `EventHubService`、`DeepThinkerBridgeServer`，JobScheduler 注册 `TrainJobService`，含 `UserProfileProvider`、`DtNotificationListenerService`。 |
+| `com.oplus.gleanerservice` 17.8.0 | `10236` / 有 `INTERNET` | 更新层位于 `/data/app`，原厂 `/product/app/Gleaner`；含 `BehaviorMonitorProvider`、`AppSwitchService`、`ObserveService`、`DataCollectService`。 |
+| `com.oplus.stdsp` 5.0.12_20c0875_260529 | `10195` / 有 `INTERNET` | `/product/app/StdSP`；含 `SRPCoreService`、`KmsService` 及 NearX Track 组件。 |
+| `com.oplus.dmp` 17.18.00 | `10135` / 有 `INTERNET` | 更新层位于 `/data/app`，原厂 `/product/priv-app/dmp`；监听包安装/卸载，JobScheduler 注册 `DailyTaskService`，含 `DailyEventProvider`、`SmsTodoRecordProvider`、`PvmDbInitProvider`。 |
+| `com.oplus.trafficmonitor` 17.3.5、`com.oplus.lfeh` 17.0.7 | `1000` (`system`) / 共享 | 流量与诊断组件；其中 `lfeh`（`/system_ext/app/LFEHer`）注册有 `.service.UploadJobService` 与 `.service.DcsScanReceiver`。 |
+| `com.heytap.htms` 2.3.2 | `10171` (`htmsenv`) / 有 `INTERNET` | 该共享 UID 下仅此一包；常驻运行 `MonitorUploadService`，JobScheduler 注册 `KitUpdateJobService`，内含 `CloudConfigReportService` 与 `com.oplus.statistic.rom.oneid.OneIdService`。 |
+| `com.heytap.mcs` 5.38.4 | `1000` (`system`) / 共享 | 系统推送底座；常驻 `McsService`、`OplusNotificationAssistant`，JobScheduler 注册 `ChannelConfigService`、`CloudConfigUpdateService`。 |
+| `com.opos.ads` 5.3.2 | `10143` / 有 `INTERNET` | `/product/app/ADS`；持 `QUERY_ALL_PACKAGES`，含 `AppStateProvider`。 |
+| `com.coloros.activation` 17.1.4、`com.coloros.bootreg` 17.0.235 | `10182`（有网）/ `10121`（**无网**） | 激活与开机引导链独立包；`bootreg` 无 `INTERNET` 权限。 |
+| `com.coloros.remoteguardservice` 17.2.2、`com.coloros.familyguard` 17.3.1 | `10124` / `10291`（均有 `INTERNET`） | 均安装启用；前者提供 `AppEventProvider`、`AppUsageProvider`，后者内嵌华为 HMS / Firebase Push 与 Drs Track。 |
+| `com.android.federatedcompute.services` 17 | `10268` / 有 `INTERNET` | `/apex/com.android.ondevicepersonalization/`；Android OnDevicePersonalization 联邦计算模块，持 `QUERY_ALL_PACKAGES`。 |
 
-当前未找到旧清单中的 `com.oplus.logkit`、`com.oplus.crashbox`，这不代表没有其他日志能力。`com.heytap.tas` 的实际路径是 TasWallet，不应仅按外部清理记录归为纯遥测。多个日志包共享 system UID，不能按单个包名直接封锁共享 UID。
+当前固件未见旧清单中的 `com.oplus.logkit`、`com.oplus.crashbox`。`com.heytap.tas` 的实际路径是 `/product/app/TasWallet`（钱包组件）。
 
-安装和权限链本轮保留：`com.android.packageinstaller` 17.0.1（`/system_ext/priv-app/OppoPackageInstaller`）；`com.oplus.appdetail` 当前更新层 5.27.0，原厂 `/product/priv-app/KeKeAppDetail` 为 5.17.62_os17；`com.coloros.phonemanager` 17.6.8；`com.oplus.securitypermission` 17.00.003；`com.oplus.safecenter` 17.2.1；`com.coloros.securityguard` 17.5.2；以及 APEX 权限模块 `com.android.permissioncontroller` 17.00.002。`com.coloros.securepay` 17.5.0、`com.ted.number` 17.15.5 和 `com.oplus.blacklistapp` 17.20.0 属于不同功能环节，可先检查对应设置。
+### ColorOS 17 反诈、风控与埋点子组件拓扑
 
-历史记录中的 `fraud_app_observer_switch=1`、`install_app_detail_safeguard_state=0`、`oplus_customize_cta_user_experience=0` 本轮仍可读取，未修改；这些值既不能证明全链路关闭，也不能证明数据已发送。
+从本机 Resolver Table 与 JobScheduler 提取出四层风控与埋点实现：
+
+1. **国家反诈解析与号码识别（`com.ted.number` 17.15.5，独立 UID `10115`，有 `INTERNET`）**：
+   - JobScheduler 除调度泰迪熊词典更新（`TedJobScheduler`、`LocalDicUpdateJob`）外，还注册了 **`com.oplus.nationalantifraud.parse.ParseJobService`**，并包含 `com.oplus.harassdetec.OpushService` 与 `ServerMarkProvider`。
+2. **AI 通话防诈、AI 换脸检测、安天查杀与灰产管控（`com.coloros.phonemanager` 17.6.8，独立 UID `10128`，有 `INTERNET`）**：
+   - **AI 通话防诈（`aivoicecalldetect`）**：含 `AiVoiceDetectForegroundService`、`SimCallDetectTriggerService`（普通电话触发）、`VoipCallDetectTriggerReceiver`（VoIP 通话触发）、`AiVoiceDetectProvider`、`FeedbackFileLogProvider` 及 `FraudDetectRuleFilePipeProvider`。
+   - **AI 换脸视频检测（`deepfakedetect`）**：含 `DeepfakeForegroundService`、`DeepfakeFaceGuideActionReceiver`、`DeepfakeFaceDetectSettingsActivity`。
+   - **安天（AVL）查杀与实时应用切换监控（`virusdetect` / `grayproduct` / `adidentify`）**：内嵌 `com.avl.engine.security.AVLProvider`，包含 `RemoteAppScanService`、`RemoteVirusService`、`AutoTestScanApksService`、`RealTimeMonitorReceiver`、`AppSwitchNotifyReceiver`、`AppRiskPackageProvider`、`GrayProductProvider`（灰产/单应用封禁）及 `LayoutExtractService`（界面布局提取）。
+3. **本地应用切换与安全事件采集（`com.coloros.securityguard` 17.5.2，独立 UID `10189`，无 `INTERNET`）**：
+   - 本身不申请联网权限，作为本地采集层暴露 `com.oplus.securityguard.antifraud.data.collection.AppSwitchNotifyProvider`、`SecurityEventProvider`、`SecurityGuardProvider`、`PvmContentProvider` 与 `InstructionReceiver`，通过 Epona/Tingle IPC 供上层风控调用。
+4. **安装收尾云检与无障碍风控（`com.oplus.appdetail` 5.27.0 / `com.oplus.safecenter` 17.2.1）**：
+   - `com.oplus.appdetail` 拥有独立 UID `10105`（有 `INTERNET`），其安装收尾 UI（`InstallFinishActivity`、`UninstallPackageActivity`）与云端校验同处一包；**按 UID `10105` 阻断联网**可在保留本地安装收尾界面的前提下切断安装云检。
+   - `com.oplus.safecenter`（共享 `system` UID `1000`）包含 `.accessibility.provider.FraudRiskProvider`、`.stealth.VoipReceiver` 与 `.privacy.control.DeepProtectReceiver`。
+5. **跨包内嵌的 NearX / DRS / HLog 埋点组件**：
+   - 即使停用主统计包 `com.oplus.statistics.rom`（UID `10096`），`phonemanager`、`appdetail`、`htms`、`mcs`、`obrain`、`stdsp`、`blacklistapp`、`tas`、`deepthinker`、`familyguard`、`ota` 内部仍各自声明了 `com.oplus.nearx.track.internal.storage.*`（`TrackEventProvider`、`EventContentProvider`）、`com.oplus.drs.rom.sdk.comm.provider.StandaloneTrackProvider` 或 `com.heytap.log.kit.server.HLogSdkProvider`。
+
+历史记录中的 `fraud_app_observer_switch=1`、`install_app_detail_safeguard_state=0`、`oplus_customize_cta_user_experience=0` 本轮仍可读取，未修改。
 
 ## moto g100 国行
 
@@ -49,40 +73,46 @@ XT2533-4 / portov，Android 16、MYUI 8、W1VT36H.1-51-8；本轮与历史记录
 
 | 组件 | 用户提供的历史 session | 本轮 ADB 检查（含重启后） |
 |---|---|---|
-| `com.mobiletools.systemhelper` | 当次未发现 | 全量包状态也未发现，不能外推所有 Moto |
+| `com.mobiletools.systemhelper` | 当次未发现 | 全量包状态未见此包 |
 | `com.motorola.regservice` | 2.0.001.0014，`/system/priv-app/RegService`；原已停用，User 0 卸载返回 Success | 仍未安装、已停止；共享 phone UID |
 | `com.motorola.deviceshield.engine` | 1.0.0，`/system_ext/priv-app/PrcDeviceShieldEngine`；用户级停用 | enabled=3 保留，重启后未见进程 |
 | `com.lenovo.lsf.device` | 原已 enabled=3 | 仍停用；更新层 V5.1.0.0330pg，系统副本 V5.0.2.0290pg |
 | `com.zui.xlog` | — | 1.1.0062，`/system/priv-app/ZuiXlog`；本轮对 User 0 停用并重启 |
 
-历史上在无网、无 SIM 条件下，通过 `com.android.packageinstaller` 界面侧载 Hiddify 一次成功；记录显示引擎包未找到并直接显示安装按钮。仍有 DeviceGuard 的 IllegalAppProvider 查询和备案、商店匹配逻辑，另有一次 Play Protect SAFE 结果。该记录只支持跳过该引擎的一次界面侧载成功，不能说明所有安装审查已关闭。本轮没有重新安装。
+历史上在无网、无 SIM 条件下，通过 `com.android.packageinstaller` 界面侧载 Hiddify 一次成功；记录显示引擎包未找到并直接显示安装按钮，同时仍触发 DeviceGuard 的 IllegalAppProvider 查询与备案/商店匹配逻辑，另有一次 Play Protect SAFE 结果。
 
-Xlog 原为 persistent，主进程及 usage 子进程运行；停用后子进程退出，补做 force-stop 后主进程仍在。Moto 重启后停用状态保留，主、子进程以及 UsageCollectorService、DeamonService 均未出现，设置页面可启动。启动阶段有两次服务未找到记录，约 15 分钟采样未见持续循环重试。启动阶段仍有 `init` 原生 SIGABRT，操作前已有同类记录，本轮未归因；没有新增 Java FATAL EXCEPTION，不能据此保证整机无异常。未验证电话、短信、IMS、OTA 或长期待机。
+Xlog 原为 persistent，主进程及 usage 子进程运行；停用后子进程退出，补做 force-stop 后主进程仍在。Moto 重启后停用状态保留，主、子进程以及 UsageCollectorService、DeamonService 均未出现，设置页面可启动。启动阶段有两次服务未找到记录，约 15 分钟采样未见持续循环重试。启动阶段仍有操作前已存在的 `init` 原生 SIGABRT，未出现新增 Java FATAL EXCEPTION。
 
 ### 后续候选与依赖
 
-以下均未在本轮新增停用；服务存在或绑定不等于已证明上传。
+以下为本机检出的相关组件与服务依赖（尚未停用）：
 
-| 包与当前版本 | 路径、线索及边界 |
-|---|---|
-| `com.zui.sdac` 1.1.1270 | SDACService、CNSClientService 运行，曾绑定 Xlog；可能涉及厂商消息。 |
-| `com.zui.deviceidservice` 16 | 客户端包括 smartplugins、smartservice 和 trip；涉及设备标识与智能场景。 |
-| `com.motorola.motocare` 4.16.06 | MotoCareService 运行，有用量及设备信息能力线索；处理可能影响售后诊断。 |
-| `com.motorola.help.extlog` 6.00.0000 | `/product/priv-app/MotoFeedbackAssistant`；本轮未见对应运行服务，不等于永不运行。 |
-| `com.motorola.android.nativedropboxagent` 6.0 | `/system_ext/priv-app/com.motorola.android.nativedropboxagent`；服务运行、persistent，共享 log UID 1007，不应按 UID 一刀封网。 |
-| `com.motorola.cn.smartservice` 2.0.2.029 | `/product/priv-app/Smartservice`；PersistService 被 Motorola systemserver 客户端绑定，另有场景服务。 |
-| `com.motorola.cn.trip` 03.0.0.05.0 | `/product/priv-app/TravelInfoServices`；TripService 运行并使用 DeviceidService，停用可能影响行程卡片。 |
-| `com.motorola.dciservice` 1.0 | DciStatsService 被 `com.android.phone` 绑定；无卡环境不足以回归电话和网络。 |
-| `com.motorola.ccc.devicemanagement` 16.00.0011 | 有 Checkin 和系统服务连接及 OTA 关联线索；本轮设备管理输出未显示 Device Owner，不排除其他管理能力。 |
-| `com.motorola.deviceguard` 7.0.0_20251128011556 | 涉及黑名单、安全、屏幕时间、电池、自启和权限等链；本轮保留整包。 |
-| `com.ted.number` 34.L.4.52.4 | 未见常驻进程；同名 Neo7 包的实现和权限不同。 |
-| `com.motorola.prcaisafety` 1.0.0.09.0 | 水印和 AI 服务名称线索；未证实是扫描引擎。 |
-| `com.motorola.bach.modemstats` 2.16.02 | 基带和网络诊断服务；无卡条件不足以完整测试。 |
-| `com.motorola.ccc.ota` 36.00.043 | 独立系统更新包，本轮保留。 |
+| 包与当前版本 | UID / 联网权限 | 路径、常驻服务、定时任务与处理边界 |
+|---|---|---|
+| `com.zui.sdac` 1.1.1270 | `10142` / 有 `INTERNET` | `/system/priv-app/ZuiSdac`；运行 `SDACService`、`CNSClientService`，注册 `com.zui.sdac.cns.hard.repeat.ALARM`，曾绑定 Xlog；涉及设备激活与 ZUI 推送。 |
+| `com.zui.deviceidservice` 16 | `10115` / 有 `INTERNET` | `/system/priv-app/DeviceidService`；运行 `DeviceidService`，客户端包括 `smartplugins`、`smartservice` 和 `trip`。 |
+| `com.motorola.aiservices` 1.5.239.7 | `10169` / 有 `INTERNET` | `/product/priv-app/AiServices`；持 `ACCESS_FINE_LOCATION`、`PACKAGE_USAGE_STATS`、`ACCESS_CHECKIN`；常驻 `MayaManagerService`、`ContextEngineService`、`SemanticLocationService`（语义位置）、`SleepPatternService`，JobScheduler 注册 `.analytics.AnalyticsJob` 与 `.modeltrainer.ModelTrainerJob`。 |
+| `com.motorola.appforecast` 06.01.0494-release | `10186` / 有 `INTERNET` | `/product/priv-app/MotoAppForecast`；持 `QUERY_ALL_PACKAGES`、`ACCESS_CHECKIN`，在 JobScheduler 有后台任务。 |
+| `com.lenovo.lsf` V4.6.0.0117p | `10179` / 有 `INTERNET` | `/product/priv-app/LSF-User-Phone`；`lsf.device`（UID `10122`）虽已停用，但本包仍为 `enabled=0`。 |
+| `com.motorola.motocare` 4.16.06 | `10259` / **无 `INTERNET`** | `/system_ext/priv-app/MotoCare`；运行 `MotoCareService`，持 `QUERY_ALL_PACKAGES`、`PACKAGE_USAGE_STATS`、`ACCESS_CHECKIN`，将相机、锁屏与设置事件写入 `.data.MotoCareProvider` 供 Checkin 链路读取。 |
+| `com.motorola.help.extlog` 6.00.0000 | `10188` / **无 `INTERNET`** | `/product/priv-app/MotoFeedbackAssistant`；检查时无运行服务（主反馈应用为 `com.motorola.help` 6.00.0219，有 `INTERNET`）。 |
+| `com.motorola.android.nativedropboxagent` 6.0 | `1007` (`log`) / **无 `INTERNET`** | `/system_ext/priv-app/com.motorola.android.nativedropboxagent`；`NativeDropBoxAgent` 常驻（persistent），本身无联网权限。 |
+| `com.motorola.cn.smartservice` 2.0.2.029 | `10215` / 有 `INTERNET` | `/product/priv-app/Smartservice`；持 `ACCESS_FINE_LOCATION`、`QUERY_ALL_PACKAGES`；运行 `MyScreenExtService`、`AITripWidgetService`、`PersistService`（被 `com.motorola.systemserver` 绑定），JobScheduler 注册 `.CheckInSchedulerService`。 |
+| `com.motorola.cn.smartplugins` 1.0.0.010 | `10212` / 有 `INTERNET` | `/product/priv-app/SmartPlugins`；持 `ACCESS_CHECKIN`，运行 `SmartPluginsService` 及计步 `PersistService` / `SensorService`。 |
+| `com.motorola.cn.trip` 03.0.0.05.0 | `10214` / 有 `INTERNET` | `/product/priv-app/TravelInfoServices`；`TripService` 运行并绑定 `DeviceidService`，停用影响行程卡片。 |
+| `com.motorola.dciservice` 1.0 | `10292` / **无 `INTERNET`** | `/system_ext/app/DciStatsService`；`DciStatsService` 被 `com.android.phone` 绑定，无联网权限。 |
+| `com.motorola.ccc.devicemanagement` 16.00.0011 | `10245` / 有 `INTERNET` | `/system_ext/priv-app/3c_devicemanagement-binary`；持 `QUERY_ALL_PACKAGES`、`PACKAGE_USAGE_STATS`、`ACCESS_CHECKIN`；运行 `BlurServiceMother`、`CheckinService`、`SystemServerBindService`，JobScheduler 注册 `JobSchedulerService`。因具独立 UID `10245`，**按 UID 防火墙断网**可阻断 `CheckinService` 外连而不影响 `SystemServerBindService` 本地绑定。 |
+| `com.motorola.deviceguard` 7.0.0_20251128011556 | `10279` / 有 `INTERNET` | `/system_ext/priv-app/PrcSecurityCenter`；涵盖 `IllegalAppProvider`、`PolicySyncService`、`SecurityScoreJobService`、`TrainAndPredictJobService`、联想 `upspushsdk`、电池与屏幕时间服务。因具独立 UID `10279`，**按 UID 阻断联网**可切断策略同步与推送，同时保留 `PackageInstaller` 对 `IllegalAppProvider` 的本地 IPC 查询及系统设置入口。 |
+| `com.ted.number` 34.L.4.52.4 | `10135` / 有 `INTERNET` | `/system/priv-app/TdxIdentifyUnknownNumbers`；未见常驻进程，仅含 `NumberService`、`IdentifyProvider`、`YellowPageProvider`（无 Neo7 同名包中的 `nationalantifraud` 任务）。 |
+| `com.motorola.prcaisafety` 1.0.0.09.0 | `10273` / 有 `INTERNET` | `/system_ext/priv-app/PRCAISafety`；含 `.AISafetyService` 与 `.AISafetyWaterMarkService`。 |
+| `com.motorola.bach.modemstats` 2.16.02 | `10255` / 有 `INTERNET` | `/system_ext/priv-app/ModemStatsService`；持 `ACCESS_FINE_LOCATION`、`PACKAGE_USAGE_STATS`、`ACCESS_CHECKIN`；运行 `ModemStatsService`、`DataStallDetectService`、`NRCheckinService`、`NVProgrammerService` 及 4 项基带统计闹钟。 |
+| `com.motorola.aicore` 1.1.127.4、`com.motorola.smarteye` 2.0.0.093、`com.motorola.enterprise.adapter.service` 16.01.0.038 | `10172` / `10282` / `10248`（均有 `INTERNET`） | 本机当前已处于停用状态（前两者 `enabled=3`，后者 `enabled=2`）。 |
+| `com.google.android.federatedcompute` 16 | `10318` / 有 `INTERNET` | `/apex/com.android.ondevicepersonalization/`；联邦学习模块，当前 `enabled=0`。 |
+| `com.motorola.ccc.ota` 36.00.043 | `10246` / 有 `INTERNET` | `/system_ext/priv-app/3c_ota`；独立系统更新包，本轮保留。 |
 
 ## 恢复
 
-验证器设置的补充记录：本轮两机读到的 global `verifier_verify_adb_installs` 均为 `0`，没有修改。没有完整记录 `package_verifier_enable` 的有效原值，不据此补出该值。前者为 0 不代表厂商所有安装扫描已关闭。
+验证器设置记录：本轮两机读取到的 global `verifier_verify_adb_installs` 均为 `0`，未作修改（该项仅控制 ADB 安装验证，独立于厂商安全组件扫描）。
 
 先确认目标设备；多台连接时，对每条 `adb` 命令加入正确的设备选择参数（例如 `adb -s <设备序列号>`），或只连接目标手机。以下命令针对 User 0。恢复前先核实当前包及状态；系统更新后路径和状态可能改变。
 

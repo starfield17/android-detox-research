@@ -116,7 +116,7 @@ adb shell pm unsuspend --user 0 "$P"
 
 ### 子组件级停用：小范围可逆，但并非什么方法都能禁掉
 
-先在目标包 dump 中找到完整 Service/Receiver/Provider 名称。下面的示例只针对 **GuardProvider 的 AiGuardService**，不是 SecurityCenter/electricrisk 的停用命令，也不能据此关闭 SecurityCenter 的本地画像记录。manifest 组件可以尝试：
+先在目标包 dump 中找到完整 Service/Receiver/Provider 名称。下面的示例针对 **GuardProvider 的 AiGuardService**（SecurityCenter 的本地画像库 `fraud_detection_data.db` 位于另一进程，需单独处理）：
 
 ```bash
 # 以下为小米 Gist 中出现的服务，仅在本机确实存在时试验；目标固件未验证
@@ -130,21 +130,25 @@ adb shell pm default-state --user 0 com.miui.guardprovider/com.miui.guardprovide
 
 ### 网络隔离与 AppOps 的实际边界
 
-1. **厂商自带联网控制**：若能分别关闭 WLAN、移动数据、后台网络，按目标包处理并复查。某些系统包被豁免；界面允许点击不等于流量一定被拦。
+1. **厂商自带联网控制**：若能分别关闭 WLAN、移动数据、后台网络，按目标包处理并复查。部分系统特权包存在底层豁免，UI 关闭后仍需核对实际流量。
 2. **无 Root VPN 防火墙**：可作为不能停用时的退路，但 Android 每个用户同一时间通常只有一个活动 VPN。正在使用 Hiddify VPN 时，不能再假定另一 VPN 防火墙能同时工作；应在同一网络方案内整合规则，或使用路由器/Root 路线。[Android 官方 VPN 约束](https://developer.android.com/develop/connectivity/vpn)
 3. **DNS/路由器阻断**：只加入来源已确认的目标域名，观察失败是否会卡住必要功能。硬编码 IP、HTTPDNS、其他网络和共享域名可能绕过或造成连带影响；不直接导入来历不明的“反诈域名大全”。
-4. **Root 防火墙**：先确认当前用户的实际 UID 及共享包。Moto RegService 的 phone UID、Neo7 多个包的 system UID、Moto NativeDropBox 的 log UID 都不适合按包名直觉封整个 UID。规则必须覆盖 IPv4/IPv6 和目标接口，不能以一条 IPv4 DROP 宣布全断。
+4. **Root / ADB eBPF 按 UID 防火墙**：先根据 `dumpsys package` 区分目标包属于哪一类网络拓扑（两台实机的完整拆解见[实机记录](devices.md)）：
+   - **独立 UID + 有 `INTERNET` 权限（首选封网目标）**：如 Neo7 的 `com.oplus.appdetail`（`10105`）、`com.coloros.phonemanager`（`10128`）、`com.ted.number`（`10115`）、`com.oplus.metis`（`10114`）、`com.oplus.dmp`（`10135`）、`com.oplus.deepthinker`（`10208`）、`com.oplus.gleanerservice`（`10236`），以及 Moto 的 `com.motorola.ccc.devicemanagement`（`10245`）、`com.motorola.deviceguard`（`10279`）、`com.zui.sdac`（`10142`）、`com.zui.deviceidservice`（`10115`）、`com.motorola.aiservices`（`10169`）、`com.motorola.bach.modemstats`（`10255`）。按 UID 阻断可在保留本地 Activity / ContentProvider / 系统服务绑定的同时切断外连。
+   - **无 `INTERNET` 权限的本地采集/IPC 组件**：如 Neo7 的 `com.coloros.securityguard`（`10189`）、`com.oplus.apprecover`（`10110`）、`com.oplus.audiomonitor`（`10176`），以及 Moto 的 `com.motorola.motocare`（`10259`）、`com.motorola.dciservice`（`10292`）、`com.motorola.help.extlog`（`10188`）、`com.motorola.android.nativedropboxagent`（`1007`）。此类组件通过 ContentProvider/Binder 将数据交给其它联网包（例如 `motocare` 交由 `ccc.devicemanagement` 的 `CheckinService`），需通过包状态或拦截下游发送方处理。
+   - **多包共享的系统核心 UID**：如 Neo7 上 49 个包共用的 `android.uid.system`（`1000`，含 `olc`、`obrain`、`onetrace`、`lfeh`、`qualityprotect`、`powermonitor`、`safecenter`、`sau`、`mcs`）以及 `android.uid.phone`（`1001`）。切勿按 UID 整组断网，应改用单包 `pm disable-user` 或子组件/定时任务控制。防火墙规则必须同时覆盖 IPv4 与 IPv6。
 5. **AppOps 后台/用量限制**：是补充，不能等同卸载，也不保证特权组件所有采集入口都受其控制。记录原模式；恢复原 allow/default/ignore 等值，不用全局 reset 清空其他偏好。
 
 证书固定会影响中间人解密，**不阻止防火墙丢包**。相反，阻断上传也不保证不再本地采集；若数据先缓存在本地，解除网络阻断后可能补发。短信型 AutoReg 不在 IP 防火墙覆盖范围内。
 
-### Root、系统遮蔽和换固件
+### 换开源系统（LineageOS / 类原生）、刷国际版与 Root 路线
 
-Root 可以让受限的 `pm` 操作以 UID 0 执行，但仍优先用用户级状态处理。必要时采用按实机路径设计的 systemless 遮蔽模块，先记录 APK 所在分区、更新层及可恢复方式；不要把某个小米模块硬编码的路径套到 Neo7 的 `SystemHelper-release-20260609`。
-
-删系统文件与 `pm uninstall --user 0` 不同，可能涉及 AVB、动态分区及 OTA 增量条件。本文不提供把分区 remount 后批量 `rm` APK 的命令。恢复遮蔽需禁用/移除模块并重启；原包物理缺失时 `install-existing` 无法凭空恢复文件。
-
-换海外官版或第三方 ROM 是独立路线：先确认**具体型号、硬件区域、Bootloader 状态、反回滚和固件支持**，不预设小米/OPPO/vivo/华为/三星/Moto 当前均可解锁或互刷。也要验收本地 IMS、NFC/钱包、相机、完整性与 OTA。海外 ROM 不是没有厂商组件的保证，改版 ROM 不属于本稿国行主结论。
+1. **终极方案：解锁 Bootloader 刷入 LineageOS 等开源系统（或官方 Global 固件）**：
+   - 在原厂国行 ROM 上逐包“脱毒”本质上是受限于固件封闭性的止损手段；只要设备支持解锁 Bootloader 且有成熟设备树（Device Tree），直接刷入 **LineageOS**、CalyxOS、crDroid 等开源 AOSP 系统，即可一次性连根拔除所有厂商特权反诈、云控与运营商 DM 框架。
+   - **机型可行性分化**：一加、部分高通版小米/Redmi 与摩托罗拉历来是类原生生态最活跃的阵营；而华为/荣耀、vivo/iQOO 已关闭解锁，小米 HyperOS 大幅提高解锁门槛，联发科天玑机型（如 realme Neo7）则普遍缺乏稳定的第三方开源 ROM 树。对有同款海外硬件的机型（如部分 Moto / 一加），在核对分区表、基带与防回滚（Anti-Rollback）后刷入官方 Global/ROW 国际版固件，也是摆脱国行特供组件的捷径。
+2. **原厂 ROM + Root / Systemless 遮蔽**：
+   - 若已解锁 BL 但因相机算法、VoLTE 或本地功能暂留原厂系统，Root 可让受保护的 `pm` 操作（如 vivo 的 `com.vivo.devicereg`）以 UID 0 执行，或配合 AFWall+（iptables/nftables）与 LSPosed 模块（如 RegBlocker）做精准拦截。
+   - 优先使用用户级状态处理或按实机路径设计的 systemless 遮蔽模块；不直接 remount 分区批量 `rm` 系统 APK，以免破坏 AVB 校验与 OTA 增量条件。
 
 ## 云控、预装恢复与更新后的复查
 
@@ -152,12 +156,12 @@ Root 可以让受限的 `pm` 操作以 UID 0 执行，但仍优先用用户级�
 
 | 链路 | Neo7 当前组件 / 其他品牌线索 | 可做的较小处理 | 代价与事实边界 |
 |---|---|---|---|
-| RUS/运行配置 | Neo7 `com.oplus.romupdate` 17.0.8 | 先关相关功能的云配置/体验项；缺 UI 时考虑确认后的通信限制 | 可能影响兼容性/网络策略；尚无证据证明它恢复了卸载包 |
+| RUS/运行配置 | Neo7 `com.oplus.romupdate` 17.0.8 | 先关相关功能的云配置/体验项；缺 UI 时考虑确认后的通信限制 | 可能影响兼容性与网络策略下发 |
 | 系统应用更新 | Neo7 `com.oplus.sau` 17.0.23、`com.oplus.sauhelper` 1.17.0；荣耀 `com.hihonor.systemappsupdater` | 系统应用更新页、商店自动更新逐项关闭，保留手动入口 | 组件修复时效降低；拒绝 disable 就记录真实失败，不连续删除依赖 |
-| 定制资源/配置 | Neo7 `com.oplus.cota` 2.2.4，CotaService 实际运行 | 无明确恢复行为前先保留、观察 | 定制和配置更新能力减少；EnterprisePushService 这个名字本身不证明设备受企业管理 |
-| 已卸载预装恢复 | Neo7 `com.oplus.apprecover` 17.0.10，`/product/priv-app/MDSService` | 不使用恢复预装功能时可列后续试停：`adb shell pm disable-user --user 0 com.oplus.apprecover`；E | 恢复入口失效；当前**未证明**该包会自动重装 SystemHelper/RegService |
-| 推送/云底座 | Neo7 `com.heytap.mcs` 5.38.4、`com.heytap.htms` 2.3.2 更新层 | 先切具体订阅、体验或联网；整包后置 | 可能影响厂商消息、账号、云功能；不能只把它们当“云控恶意包” |
-| OS OTA | Neo7 `com.oplus.ota`、Moto `com.motorola.ccc.ota`、荣耀 `com.hihonor.ouc` | UI 关闭自动下载/夜间安装，升级前后人工复查 | 不等于永久停更新 |
+| 定制资源/配置 | Neo7 `com.oplus.cota` 2.2.4，CotaService 实际运行 | 无明确恢复行为前先保留、观察 | 运营商/区域定制与配置更新能力减少 |
+| 已卸载预装恢复 | Neo7 `com.oplus.apprecover` 17.0.10，`/product/priv-app/MDSService` | 不使用恢复预装功能时可列后续试停：`adb shell pm disable-user --user 0 com.oplus.apprecover`；E | 设置中的“恢复预装应用”入口失效（该包无 INTERNET 权限） |
+| 推送/云底座 | Neo7 `com.heytap.mcs` 5.38.4、`com.heytap.htms` 2.3.2 更新层 | 先切具体订阅、体验或联网；整包后置 | 可能影响厂商消息、账号与云服务功能 |
+| OS OTA | Neo7 `com.oplus.ota`、Moto `com.motorola.ccc.ota`、荣耀 `com.hihonor.ouc` | UI 关闭自动下载/夜间安装，升级前后人工复查 | 关闭自动下载与夜间安装，保留手动升级入口 |
 
 Reno9 / ColorOS 15 的记录还显示 `sauhelper` 可以停，而部分包会拒绝 disable；版本差异应保留。[公开操作记录](https://github.com/byteharbor-k2/Secure-3C-Device/blob/main/docs/03-app-management/Chapter_1/1_debloat-main-system.md) “包有自更新能力”“云端可下发配置”“已发生用户卸载状态恢复”是三个事实，不能互相替代。
 
@@ -206,41 +210,42 @@ adb shell logcat -b crash -d -t 200 > crash-after-private.txt
 
 ## 下一阶段候选 TODO
 
-2026-11-17 补充。以下仅记录可能的后续方向，均未在本项目两台设备上实施或完成兼容性验证，也不是批量操作清单。已完成的包处理仍以[实机记录](devices.md)为准，不重复执行。优先级是研究与验证顺序，不代表已决定安装某工具、取得 Root 或更换系统。
+2026-11-20 修订。遵循**「能刷开源系统则连根拔起，留守原厂固件则用原生持久化手段 + 现有代理零冲突阻断」**的原则，后续研究与实机推进按以下四个层次展开：
 
-### P0：选择可持续、兼容现有代理的联网控制
+### P0：核查两台实机的 Bootloader 解锁与开源 ROM / 国际版固件可行性
 
-- [ ] **评估 App Manager 4.1.1 的 ADB/eBPF 联网限制。** 官方发布说明支持 ADB 或 Root 模式，底层使用 UID 防火墙规则，不占用 `VpnService`；不能写成普通 `pm revoke INTERNET` 即可实现。先选确认使用独立 UID 的非核心候选，检查本机接口权限、实际拒绝效果和恢复结果。共用 system/phone/log UID 的包不直接整组封网。[发布说明](https://github.com/MuntashirAkon/AppManager/releases/tag/v4.1.1)、[对应版本接口源码](https://github.com/MuntashirAkon/AppManager/blob/v4.1.1/app/src/main/java/io/github/muntashirakon/AppManager/compat/ConnectivityManagerCompat.java)
-- [ ] **比较 VPN 防火墙与现有 Hiddify 路径。** 候选为 Rethink、NetGuard；同一用户或资料夹只能有一个活动 `VpnService`。Rethink 支持 SOCKS5、HTTP CONNECT、WireGuard 转发，但不据此假定当前 Hiddify 提供可用的本地代理入口。需要核对协议、DNS、UDP、IPv6 与分流，选定一条完整路径后再配置。已有 Root 时另评估 AFWall+，不为试用防火墙直接进入解锁/Root 流程。[Rethink](https://github.com/celzero/rethink-app)、[NetGuard](https://github.com/M66B/NetGuard)、[Android VPN 约束](https://developer.android.com/develop/connectivity/vpn)、[AFWall+](https://github.com/ukanth/afwall/blob/beta/README.md)
-- [ ] **验证持续性与最小回退。** App Manager 官方明确说明 eBPF 规则重启后丢失，恢复 ADB 连接前可能有联网空窗。覆盖 WLAN、移动数据、IPv6、代理开关、重启、规则管理器退出及 OTA 后的情况；记录规则是否重建、窗口期和具体恢复方式，不能以界面开关状态代替流量结果。
+- [ ] **评估 moto g100 国行（XT2533-4 / `portov`，高通 `sm7435` / `parrot` 平台）的解锁与刷机路线。** 摩托罗拉保留官方 Fastboot 解锁通道（`fastboot oem get_unlock_data` 提交官方解锁门户）：
+  1. **同代号海外版官方固件（Global/ROW）评估**：`portov` 在海外对应 Moto G67 Power 等型号（固件镜像见 Lolinet `lenomola/2025/portov`），核查国行 `portov_cn` 解锁后刷入海外版 `RET` 官方固件的分区表、基带与 RRO 兼容性（若可行，可直接拔除 MYUI 8 全套 `PrcSecurityCenter`、`PrcDeviceShieldEngine`、`ZuiXlog`、`ZuiSdac` 与 `RegService`）。
+  2. **LineageOS GSI（Project Treble）评估**：虽然 `portov` 暂无独立官方 LineageOS 设备树，但高通 `sm7435` 平台解锁并在 `vbmeta` 禁用校验后，可测试刷入 Treble LineageOS GSI 镜像。
+- [ ] **确认 realme Neo7（RMX5060 / 天玑 9300+ 平台）的解锁与边界。** 需通过真我官方“深度测试”APK 申请名额解锁（Android 17 大版本初期常需核对深度测试是否开放或需回退 Android 16 申请）；由于 RMX5060 为国行独占天玑机型，无海外同款官方 ROM 且缺稳定 LineageOS 设备树，即使解锁也主要走 Root（KernelSU/Magisk + AFWall+）或留守原厂固件做深度减毒。
 
-交付物：两台设备分别给出“可用／不可用／仍待验证”的网络方案、目标 UID 与共享包、覆盖范围、开机空窗、功能代价及撤销方法。联网限制不代表本地采集已停止，也不覆盖短信型自注册。
+### P0：原厂固件原生持久化减毒（隐藏开关置零 + 第二批单包停用 + 多用户死角清理）
 
-### P0：用少量连接观察支持操作选择
+- [ ] **关闭实机检出的反诈与风控隐藏 Settings 开关。** 快照显示 Neo7 当前仍开启 `fraud_app_observer_switch=1`、`oplus_ai_fraud_guide_trigger_mask=11` 与 `oplus_customize_harass_intercept_mark_number_fraud=3`。通过 ADB 将相关开关置 `0`，验证重启后的保持情况与读取方行为。
+- [ ] **清理多用户空间（如 ColorOS 应用分身 `User 999`）的残留启用项。** 快照 `final-services.txt` 显示 Neo7 的 `User 999` 仍绑定运行 `com.heytap.openid/.IdentifyService`。建立针对非 0 用户空间的同步检查与停用流程（`--user 999`）。
+- [ ] **按序推进第二批高置信度后台包的 `pm disable-user`。** 在上一轮已停用 `DCS` 与 `Xlog` 的基础上，逐包实测停用已确认职责的广告、日志与 AI 遥测组件：
+  - **Neo7**：`com.opos.ads`（系统广告）、`com.oplus.onetrace`、`com.oplus.lfeh`、`com.oplus.logtrial`、`com.oplus.postmanservice`、`com.android.federatedcompute.services`，随后评估 `com.oplus.metis`、`com.oplus.dmp`、`com.oplus.gleanerservice`。
+  - **Moto**：`com.motorola.aiservices`（语义位置与 `AnalyticsJob`）、`com.motorola.appforecast`、`com.lenovo.lsf`、`com.motorola.motocare`、`com.motorola.help.extlog`、`com.zui.sdac`、`com.google.android.federatedcompute`。
 
-- [ ] **评估 PCAPdroid 等现有工具的观察路径。** 如需观察，先记录原网络、代理和组件状态；无 Root 模式会占用 VPN，Root 抓取另有路径，不能混为同一测试条件。不要求解密全部 HTTPS，也不以证明恶意或上传内容作为处理前提。[官方使用说明](https://emanuele-f.github.io/PCAPdroid/quick_start.html)、[Root 抓取等高级功能](https://emanuele-f.github.io/PCAPdroid/advanced_features.html)
-- [ ] **把“端口切除”拆成具体目标。** 区分本地监听服务、某 UID 的出站连接、目的域名/IP 和内部采集入口；没有实际监听记录时不编造专用端口。根据观察选择较小的规则，避免以共享 HTTPS 端口代替目标识别。DNS 过滤需要核对硬编码 IP、独立 DNS 和移动网络等覆盖缺口。
+### P1：复合核心包的「AppOps 持久化剥权 + 现有 Hiddify (Sing-box) 按独立 UID/域名阻断」
 
-交付物：只保留影响处理决策的连接摘要及前后对照；原始抓取和个人数据不进入公开仓库。
+由于现代国行组件外连几乎全部走标准 HTTPS/QUIC（443 端口），且免 Root 下的 App Manager eBPF 防火墙存在**重启即清空、开机 `BOOT_COMPLETED` 阶段完全裸奔**的缺陷，同时另装 VPN 防火墙（Rethink/NetGuard）会与现有的 **Hiddify** 争夺唯一的 `VpnService` 槽位，联网隔离直接采用**「原生控制 + 复用 Hiddify (Sing-box)」**组合：
 
-### P1：保留必要功能，缩小数据访问和内部入口
+- [ ] **对不可整包停用的复合包实施 `cmd appops` 与运行时权限剥夺（重启持久保留）。** 针对 Neo7 的 `com.coloros.phonemanager`、`com.oplus.safecenter`、`com.coloros.securityguard` 与 Moto 的 `com.motorola.deviceguard`、`com.motorola.ccc.devicemanagement`，通过 ADB 将 `GET_USAGE_STATS`、`RUN_IN_BACKGROUND`、`RUN_ANY_IN_BACKGROUND`、`WAKE_LOCK`、`ACCESS_FINE_LOCATION` 等置为 `ignore`。
+- [ ] **直接复用 Hiddify（Sing-box 核心）按 `package_name`（独立 UID）与域名执行 `reject` 阻断。** 利用本文已建立的独立 UID 矩阵，在 Sing-box 路由规则中将以下高危独立 UID 包及其遥测域名直接指向 `block/reject`（确保它们未被排除在 VPN 分流列表外）：
+  - **Neo7**：`com.oplus.appdetail`（`UID 10105`，保留本地安装收尾 UI 的同时切断安装云检）、`com.coloros.phonemanager`（`UID 10128`，切断安天/病毒云查杀与 NearX 埋点外连）、`com.ted.number`（`UID 10115`，切断 `nationalantifraud.parse.ParseJobService` 外连）、`com.oplus.cota`（`UID 10097`）、`com.oplus.romupdate`（`UID 10186`）、`com.heytap.htms`（`UID 10171`）、`com.heytap.openid`（`UID 10116`）。
+  - **Moto**：`com.motorola.deviceguard`（`UID 10279`，保留 `PackageInstaller` 本地查询 `IllegalAppProvider` 的同时切断策略同步与推送）、`com.motorola.ccc.devicemanagement`（`UID 10245`，保留 `SystemServerBindService` 本地绑定的同时切断 `CheckinService` 外连）、`com.motorola.bach.modemstats`（`UID 10255`，切断 `NRCheckinService`）。
+- [ ] **叠加系统自带联网控制与 Private DNS（加密 DNS 过滤）。** 对未被系统白名单豁免的独立 UID 包，同时在系统应用详情中关闭 WLAN 与移动数据权限，并配置支持自定义规则的加密 DNS（如 NextDNS / AdGuard DNS），填补开机阶段 Hiddify 启动前的联网空窗。
 
-- [ ] **评估 AppOps、权限和子组件控制。** 对不能整包停用的候选，逐项确认访问是否受相应权限或 AppOp 控制，保存原模式并验证实际变化。ADB 不具备任意修改所有应用子组件的能力；App Manager 文档仅列出 test-only 应用等有限例外。普通设置、ADB、Root/IFW 分开记录，内部 SDK 或普通 Java 方法不当作可直接禁用的 manifest 组件。[App Manager 手册](https://muntashir.dev/AppManager/en/)
-- [ ] **需要更细控制时，再研究匹配版本的 Hook。** 只针对明确的采集、落库或发送入口，记录命中日志、失效检测和回退。RegBlocker 可作为方法参考：公开验证针对特定 vivo 固件，不是 realme/Moto 的可直接安装方案；OTA 后需重新判断适配。[具体作用域和验证记录](https://github.com/Xposed-Modules-Repo/io.github.greatday2233.vivodmguard/blob/main/README.md)
+### P1：高隐私权重用户入口的「开源替换 + 原厂包停用」与侧载绕过
 
-交付物：每个候选的实际权限前提、可关闭的入口、保留的功能、失败行为和恢复结果；不把持有权限、存在 SDK 或服务运行等同于实际上传。
+仅针对本身握有高敏感输入数据或承担前端拦截的原厂应用做替换（替换后必须同步 `pm disable-user` 或断网原厂包；不折腾收益极低且易破坏双卡 VoLTE 的系统拨号器替换）：
 
-### P1：按用户入口评估开源替换
+- [ ] **输入法替换（最高优先级）**：安装开源离线的 **Fcitx5 for Android（小企鹅输入法）** 或 **Trime（同文）**，设为默认输入法并确认密码框安全键盘兼容后，停用或彻底断网原厂定制版搜狗/百度输入法。[Fcitx5 for Android](https://github.com/fcitx5-android/fcitx5-android)、[Trime](https://github.com/osfans/trime)
+- [ ] **浏览器与全局搜索替换**：以 Firefox / Cromite 设为默认浏览器后，通过 `pm disable-user` 停用内嵌网址反诈拦截与广告推荐的 `com.heytap.browser`、`com.heytap.quicksearchbox` 及 Moto 的 `com.zui.browser`。
+- [ ] **侧载安装通道绕过（`InstallerX Revived` + Shizuku）**：利用 Shizuku 授权 InstallerX 直接向系统提交底层 `PackageInstaller.Session`，绕开 ColorOS 点击 APK 时调起 `OppoPackageInstaller` → `KeKeAppDetail` 的风险拦截页与账号验证弹窗。[InstallerX Revived 说明](https://github.com/wxxsfxyzm/InstallerX-Revived/blob/main/docs/README_CN.md)
 
-- [ ] **优先调查输入法等独立应用。** 中文输入法候选包括同文/Trime；HeliBoard 是不申请联网权限的另一例，但不能假定它满足中文输入需求。先核对输入体验、密码框/安全键盘、默认角色和原厂后台依赖，再决定如何处理原包。[Trime](https://github.com/osfans/trime)、[HeliBoard](https://github.com/HeliBorg/HeliBoard)
-- [ ] **单独评估 InstallerX Revived。** 区分接管 APK 打开界面、以 Shizuku/Root 身份提交安装，以及替换系统安装器；前两者不证明 OEM 框架或 Provider 检查已被移除。先研究兼容性和原厂安装链的退路，不直接套用其他机型的系统替换模块。[官方中文说明](https://github.com/wxxsfxyzm/InstallerX-Revived/blob/main/docs/README_CN.md)
-- [ ] **通讯录、拨号器等按角色与依赖分别判断。** 验收默认角色、来电界面、双卡、权限及原厂回退；紧急呼叫按 Android 设计仍依赖预装拨号器，不用实际拨紧急号码做测试，也不因换默认 App 就删除通话基础组件。[Android InCallService 文档](https://developer.android.com/reference/android/telecom/InCallService)
+### P2：按需抓包补全域名表与国内商业 App 沙箱隔离
 
-交付物：按“替代应用／原包／底层依赖／功能损失／恢复方法”整理的小清单。没有合适替代品或替代收益不明确的项目可以保留，不以全套开源替换为完成条件。
-
-### P2：普通 App 隔离与系统级路线
-
-- [ ] **评估 Shelter／工作资料夹或独立用户。** 用于分开普通商业 App 的数据和运行环境；核对 OEM 实现、跨资料共享、通知与 VPN 覆盖。它们共用同一套系统，不作为隔离厂商特权服务的保证。新增用户空间后仍需复查预装组件状态。[Shelter 及其 OEM 实现限制](https://github.com/PeterCxy/Shelter/blob/master/README.md)
-- [ ] **仅在具体需求推动时评估 Root 或替代 ROM。** 核对具体型号、代号、解锁、维护和回退条件；Moto XT2533-4 / portov 不按旧款同名 g100 的适配情况判断。GrapheneOS 的框架级网络权限可作为设计参考，但当前官方支持名单不含这两台设备，不是可直接刷入的方案。[网络权限设计](https://grapheneos.org/features#network-permission-toggle)、[官方设备支持](https://grapheneos.org/faq#supported-devices)
-
-交付物：是否值得进入该路线的结论及依据；无可维护适配时不继续实施。所有候选先完成小范围验证，再决定是否提升为本指南的正式操作步骤。
+- [ ] **按需抓包提取残余未知域名。** 仅在需要将特定组件的残余外连域名补充进 Sing-box / NextDNS 黑名单时，临时启用 PCAPdroid 采样目标 UID 的 DNS 与 SNI/IP，采样完毕即恢复 Hiddify 常驻。[PCAPdroid 说明](https://emanuele-f.github.io/PCAPdroid/quick_start.html)
+- [ ] **国内商业 App 的工作资料夹（Shelter）隔离与同步脱毒。** 若使用 Shelter 建立工作资料夹（User 10）关押国内商业 App（防止跨应用读取文件与完整包列表），必须在建好资料夹后立即对该用户空间执行一套 `--user 10` 的系统遥测组件清理脚本，防止厂商组件在新用户空间复活。[Shelter 说明](https://github.com/PeterCxy/Shelter/blob/master/README.md)

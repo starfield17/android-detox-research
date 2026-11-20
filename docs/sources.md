@@ -1,6 +1,6 @@
 # 公开来源
 
-研究和用户自述不等于对所有固件的验证。数据库和清单用于发现候选，具体反馈的型号、版本与测试范围见[组件表](components.md)；两台手机的实际记录见[实机记录](devices.md)。固定提交用于保持数据库版本可追溯。
+以下汇总本文引用的学术论文、逆向分析、组件数据库（采用固定提交以保证可追溯）、厂商文档与社区实机反馈。各组件的适用型号、固件版本与测试范围见[组件表](components.md)；两台手机的实际记录见[实机记录](devices.md)。
 
 - [UAD-ng 组件数据库（固定提交）](https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation/blob/31e3dea4546c9b05eb975474d30ea7c88fd0b930/resources/assets/uad_lists.json)
 - [Canta 文档](https://github.com/samolego/Canta/blob/master/README.md)
