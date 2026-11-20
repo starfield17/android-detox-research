@@ -145,6 +145,7 @@ adb shell pm default-state --user 0 com.miui.guardprovider/com.miui.guardprovide
 
 1. **终极方案：解锁 Bootloader 刷入 LineageOS 等开源系统（或官方 Global 固件）**：
    - 在原厂国行 ROM 上逐包“脱毒”本质上是受限于固件封闭性的止损手段；只要设备支持解锁 Bootloader 且有成熟设备树（Device Tree），直接刷入 **LineageOS**、CalyxOS、crDroid 等开源 AOSP 系统，即可一次性连根拔除所有厂商特权反诈、云控与运营商 DM 框架。
+   - **存量主力机的数据迁移铁律（新机先刷系统、再迁数据）**：由于解锁 Bootloader 与跨 ROM 刷机必然触发硬件级格式化 `/data`（销毁 FBE 密钥），对于已经承载大量高价值状态的存量主力机（如本机唯一 Passkey、Telegram 唯一登录会话、去中心化钱包助记词/私钥、各类 2FA 令牌与端到端加密聊天库），**不建议在无备机状态下直接原地洗机**。工程上最稳妥的路径是：**当前主力机先原地深度减毒止损；待购入下一台明确支持解锁的设备时，在新机空机状态下第一时间刷好 LineageOS / GrapheneOS，再将旧机的重要会话、Passkey 与密钥点对点平滑迁移过去**（或至少通过 PC 安卓虚拟化/备用机提前 24 小时完成会话接力与离线助记词/二维码导出）。
    - **机型可行性分化**：一加、部分高通版小米/Redmi 与摩托罗拉历来是类原生生态最活跃的阵营；而华为/荣耀、vivo/iQOO 已关闭解锁，小米 HyperOS 大幅提高解锁门槛，联发科天玑机型（如 realme Neo7）则普遍缺乏稳定的第三方开源 ROM 树。对有同款海外硬件的机型（如部分 Moto / 一加），在核对分区表、基带与防回滚（Anti-Rollback）后刷入官方 Global/ROW 国际版固件，也是摆脱国行特供组件的捷径。
 2. **原厂 ROM + Root / Systemless 遮蔽**：
    - 若已解锁 BL 但因相机算法、VoLTE 或本地功能暂留原厂系统，Root 可让受保护的 `pm` 操作（如 vivo 的 `com.vivo.devicereg`）以 UID 0 执行，或配合 AFWall+（iptables/nftables）与 LSPosed 模块（如 RegBlocker）做精准拦截。
@@ -210,22 +211,21 @@ adb shell logcat -b crash -d -t 200 > crash-after-private.txt
 
 ## 下一阶段候选 TODO
 
-2026-11-20 修订。遵循**「能刷开源系统则连根拔起，留守原厂固件则用原生持久化手段 + 现有代理零冲突阻断」**的原则，后续研究与实机推进按以下四个层次展开：
+2026-11-20 修订。两台实机采用**「双机物理隔离」**架构：**moto g100 国行（无 SIM 卡）**作为海外核心与高敏资产主力机（因存量 Passkey、Telegram 唯一会话与密钥迁移成本高，当前不原地洗机，优先在原厂类原生 MYUI 8 上做彻底排雷；刷开源 ROM 留待后续购入新可解锁设备时“先刷机、后迁移”）；**realme Neo7** 专门运行国内软件（重点深度清理反诈、遥测、广告与冗余功能包）。具体推进顺序如下：
 
-### P0：核查两台实机的 Bootloader 解锁与开源 ROM / 国际版固件可行性
+### P0：moto g100（海外核心无卡主力机）全量隐藏威胁排雷与清零
 
-- [ ] **评估 moto g100 国行（XT2533-4 / `portov`，高通 `sm7435` / `parrot` 平台）的解锁与刷机路线。** 摩托罗拉保留官方 Fastboot 解锁通道（`fastboot oem get_unlock_data` 提交官方解锁门户）：
-  1. **同代号海外版官方固件（Global/ROW）评估**：`portov` 在海外对应 Moto G67 Power 等型号（固件镜像见 Lolinet `lenomola/2025/portov`），核查国行 `portov_cn` 解锁后刷入海外版 `RET` 官方固件的分区表、基带与 RRO 兼容性（若可行，可直接拔除 MYUI 8 全套 `PrcSecurityCenter`、`PrcDeviceShieldEngine`、`ZuiXlog`、`ZuiSdac` 与 `RegService`）。
-  2. **LineageOS GSI（Project Treble）评估**：虽然 `portov` 暂无独立官方 LineageOS 设备树，但高通 `sm7435` 平台解锁并在 `vbmeta` 禁用校验后，可测试刷入 Treble LineageOS GSI 镜像。
-- [ ] **确认 realme Neo7（RMX5060 / 天玑 9300+ 平台）的解锁与边界。** 需通过真我官方“深度测试”APK 申请名额解锁（Android 17 大版本初期常需核对深度测试是否开放或需回退 Android 16 申请）；由于 RMX5060 为国行独占天玑机型，无海外同款官方 ROM 且缺稳定 LineageOS 设备树，即使解锁也主要走 Root（KernelSU/Magisk + AFWall+）或留守原厂固件做深度减毒。
+- [x] **第一批直接停用（2026-11-20 已完成 26 项 `pm disable-user --user 0`，全部变为 `enabled=3`，0 新增崩溃）**：
+  - 已停用：`com.lenovo.leos.cloud.sync`、`com.zui.antitheft`、`com.motorola.cn.searchintelligence`、`com.motorola.cn.contentassistant`、`com.lenovo.levoice_agent`、`com.lenovo.xiaotian.trigger`、`com.lenovo.lsf`、`com.motorola.aiservices`、`com.motorola.appforecast`、`com.motorola.cn.pkbservice`、`com.motorola.cn.smartservice`、`com.motorola.cn.smartplugins`、`com.motorola.cn.smartscene`、`com.motorola.cn.trip`、`com.motorola.myscreen`、`com.motorola.cn.calendar`、`com.motorola.wallpaper.cn`、`com.motorola.wallpaperphotoshuffle`、`com.zui.sdac`、`com.zui.deviceidservice`、`com.motorola.motocare`、`com.motorola.help.extlog`、`com.motorola.prcaisafety`、`com.ted.number`、`com.google.android.federatedcompute`、`com.google.android.adservices.api`（其中 `antitheft`、`levoice_agent`、`sdac` 为 persistent 进程，待下次正常重启后复查彻底退出）。
+- [x] **第二批耦合 Checkin / 安全组件的 AppOps 剥权（2026-11-20 已完成 7 项）**：
+  - 已对 `com.motorola.ccc.devicemanagement`（UID `10245`）、`com.motorola.deviceguard`（UID `10279`）、`com.motorola.coresettingsext`（UID `10250`）、`com.motorola.msimsettings`（UID `10256`）、`com.motorola.bach.modemstats`（UID `10255`）、`com.motorola.wifi.motowifimetrics`（UID `10267`）、`com.motorola.cn.deskclock`（UID `10343`）将 `RUN_IN_BACKGROUND`、`RUN_ANY_IN_BACKGROUND` 及支持包的 `GET_USAGE_STATS` 置为 `ignore`。
 
-### P0：原厂固件原生持久化减毒（隐藏开关置零 + 第二批单包停用 + 多用户死角清理）
+### P0：realme Neo7（国内软件专用机）深度卸载/停用与反诈开关清零
 
-- [ ] **关闭实机检出的反诈与风控隐藏 Settings 开关。** 快照显示 Neo7 当前仍开启 `fraud_app_observer_switch=1`、`oplus_ai_fraud_guide_trigger_mask=11` 与 `oplus_customize_harass_intercept_mark_number_fraud=3`。通过 ADB 将相关开关置 `0`，验证重启后的保持情况与读取方行为。
-- [ ] **清理多用户空间（如 ColorOS 应用分身 `User 999`）的残留启用项。** 快照 `final-services.txt` 显示 Neo7 的 `User 999` 仍绑定运行 `com.heytap.openid/.IdentifyService`。建立针对非 0 用户空间的同步检查与停用流程（`--user 999`）。
-- [ ] **按序推进第二批高置信度后台包的 `pm disable-user`。** 在上一轮已停用 `DCS` 与 `Xlog` 的基础上，逐包实测停用已确认职责的广告、日志与 AI 遥测组件：
-  - **Neo7**：`com.opos.ads`（系统广告）、`com.oplus.onetrace`、`com.oplus.lfeh`、`com.oplus.logtrial`、`com.oplus.postmanservice`、`com.android.federatedcompute.services`，随后评估 `com.oplus.metis`、`com.oplus.dmp`、`com.oplus.gleanerservice`。
-  - **Moto**：`com.motorola.aiservices`（语义位置与 `AnalyticsJob`）、`com.motorola.appforecast`、`com.lenovo.lsf`、`com.motorola.motocare`、`com.motorola.help.extlog`、`com.zui.sdac`、`com.google.android.federatedcompute`。
+- [x] **关闭实机检出的反诈与风控隐藏 Settings 开关（2026-11-20 已完成）**：`fraud_app_observer_switch`（`1→0`）、`oplus_ai_fraud_guide_trigger_mask`（`11→0`）、`oplus_customize_harass_intercept_mark_number_fraud`（`3→0`）均已回读确认为 `0`。
+- [x] **停用中央 DRS 遥测守护进程、日志链、AI 画像与功能冗余包（2026-11-20 已完成 33 项 `enabled=3` + 20 项 AppOps 剥权）**：
+  - 已停用 `com.oplus.framework.network.drs` 等 33 个包（完整列表见[实机记录](devices.md)）。
+  - 针对 ColorOS 17 同时拦截 `disable-user`（回读保持 `default`）与免 Root `uninstall --user 0`（返回 `Failure [only root can delete system app for a particular user]`）的 9 个受保护包（`opos.ads`、`olc`、`assistantscreen`、`quicksearchbox`、`pictorial`、`instant.platform`、`browser`、`gleanerservice`、`pantanal.ums`），已连同 11 个核心耦合包一并完成 `RUN_IN_BACKGROUND` / `RUN_ANY_IN_BACKGROUND` / `GET_USAGE_STATS` 剥权（`ignore`）与 `force-stop`，其中 `opos.ads`、`quicksearchbox`、`pictorial`、`instant.platform`、`browser`、`gleanerservice` 进程已彻底清零。
 
 ### P1：复合核心包的「AppOps 持久化剥权 + 现有 Hiddify (Sing-box) 按独立 UID/域名阻断」
 
